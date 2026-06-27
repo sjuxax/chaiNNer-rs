@@ -11,7 +11,7 @@ use pyo3::{exceptions::PyValueError, prelude::*};
 
 use crate::convert::{IntoNumpy, LoadImage, PyImage};
 
-#[pyclass(frozen)]
+#[pyclass(frozen, from_py_object)]
 #[derive(Clone, PartialEq, Debug)]
 pub struct UniformQuantization {
     inner: ChannelQuantization,
@@ -39,7 +39,7 @@ impl UniformQuantization {
     }
 }
 
-#[pyclass(frozen)]
+#[pyclass(frozen, from_py_object)]
 #[derive(Clone)]
 pub struct PaletteQuantization {
     palette: Arc<NDimImage>,
@@ -119,7 +119,7 @@ pub enum Quant {
     Palette(PaletteQuantization),
 }
 
-#[pyclass]
+#[pyclass(from_py_object)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum DiffusionAlgorithm {
     FloydSteinberg = 0,
@@ -137,11 +137,11 @@ pub fn quantize<'py>(
     py: Python<'py>,
     img: PyImage<'py>,
     quant: Quant,
-) -> PyResult<&'py PyArray3<f32>> {
+) -> PyResult<Bound<'py, PyArray3<f32>>> {
     match quant {
         Quant::Uniform(quant) => {
             let mut img: NDimImage = img.load_image()?;
-            let result = py.allow_threads(|| {
+            let result = py.detach(|| {
                 image_ops::dither::quantize_ndim(&mut img, quant.inner);
                 img.into_numpy()
             });
@@ -152,13 +152,13 @@ pub fn quantize<'py>(
                 py: Python<'py>,
                 img: PyImage<'py>,
                 quant: impl Quantizer<P, P> + Sync,
-            ) -> PyResult<&'py PyArray3<f32>>
+            ) -> PyResult<Bound<'py, PyArray3<f32>>>
             where
                 P: Pixel + Send + FromFlat,
                 Image<P>: IntoNumpy,
             {
                 let mut img: Image<P> = img.load_image()?;
-                let result = py.allow_threads(|| {
+                let result = py.detach(|| {
                     image_ops::dither::quantize(&mut img, &quant);
                     img.into_numpy()
                 });
@@ -183,10 +183,10 @@ pub fn quantize<'py>(
 #[pyfunction]
 pub fn ordered_dither<'py>(
     py: Python<'py>,
-    img: PyImage,
+    img: PyImage<'py>,
     quant: UniformQuantization,
     map_size: u32,
-) -> PyResult<&'py PyArray3<f32>> {
+) -> PyResult<Bound<'py, PyArray3<f32>>> {
     if !map_size.is_power_of_two() {
         return Err(PyValueError::new_err(format!(
             "Argument '{}' must be a power of 2.",
@@ -195,7 +195,7 @@ pub fn ordered_dither<'py>(
     }
 
     let mut img = img.load_image()?;
-    let result = py.allow_threads(|| {
+    let result = py.detach(|| {
         image_ops::dither::ordered_dither(&mut img, map_size as usize, quant.inner);
         img.into_numpy()
     });
@@ -209,28 +209,28 @@ mod diffusion {
 
     pub struct Config<'py>(pub Python<'py>, pub PyImage<'py>);
 
-    fn with_pixel_format<P>(
-        Config(py, img): Config<'_>,
+    fn with_pixel_format<'py, P>(
+        Config(py, img): Config<'py>,
         quant: impl Quantizer<P, P> + Sync,
         algorithm: impl image_ops::dither::DiffusionAlgorithm + Send,
-    ) -> PyResult<&PyArray3<f32>>
+    ) -> PyResult<Bound<'py, PyArray3<f32>>>
     where
         P: Pixel + Send + FromFlat,
         Image<P>: IntoNumpy,
     {
         let mut img: Image<P> = img.load_image()?;
-        let result = py.allow_threads(|| {
+        let result = py.detach(|| {
             image_ops::dither::error_diffusion_dither(&mut img, algorithm, &quant);
             img.into_numpy()
         });
         Ok(result.into_pyarray(py))
     }
 
-    pub fn with_algorithm(
-        config: Config,
+    pub fn with_algorithm<'py>(
+        config: Config<'py>,
         quant: Quant,
         algorithm: impl image_ops::dither::DiffusionAlgorithm + Send,
-    ) -> PyResult<&PyArray3<f32>> {
+    ) -> PyResult<Bound<'py, PyArray3<f32>>> {
         let c = config.1.channels();
         let err = Err(PyValueError::new_err(format!(
             "Argument '{}' does not have the right shape. Expected 1, 3, or 4 channels but found {}.",
@@ -261,7 +261,7 @@ pub fn error_diffusion_dither<'py>(
     img: PyImage<'py>,
     quant: Quant,
     algorithm: DiffusionAlgorithm,
-) -> PyResult<&'py PyArray3<f32>> {
+) -> PyResult<Bound<'py, PyArray3<f32>>> {
     use diffusion::*;
 
     let config: Config<'py> = Config(py, img);
@@ -286,16 +286,16 @@ mod riemersma {
 
     pub struct Config<'py>(pub Python<'py>, pub PyImage<'py>, pub usize, pub f32);
 
-    pub fn with_pixel_format<P>(
-        Config(py, img, history_length, decay_ratio): Config<'_>,
+    pub fn with_pixel_format<'py, P>(
+        Config(py, img, history_length, decay_ratio): Config<'py>,
         quant: impl Quantizer<P, P> + Sync,
-    ) -> PyResult<&PyArray3<f32>>
+    ) -> PyResult<Bound<'py, PyArray3<f32>>>
     where
         P: Pixel + Send + FromFlat,
         Image<P>: IntoNumpy,
     {
         let mut img: Image<P> = img.load_image()?;
-        let result = py.allow_threads(|| {
+        let result = py.detach(|| {
             image_ops::dither::riemersma_dither(&mut img, history_length, decay_ratio, &quant);
             img.into_numpy()
         });
@@ -310,7 +310,7 @@ pub fn riemersma_dither<'py>(
     quant: Quant,
     history_length: u32,
     decay_ratio: f32,
-) -> PyResult<&'py PyArray3<f32>> {
+) -> PyResult<Bound<'py, PyArray3<f32>>> {
     if history_length < 2 {
         return Err(PyValueError::new_err(format!(
             "Argument '{}' must be at least 2.",

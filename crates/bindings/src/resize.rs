@@ -9,7 +9,7 @@ use crate::{
     IntoNumpy,
 };
 
-#[pyclass]
+#[pyclass(from_py_object)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ResizeFilter {
     Nearest = 0,
@@ -52,7 +52,7 @@ pub fn resize<'py>(
     new_size: (u32, u32),
     filter: ResizeFilter,
     mut gamma_correction: bool,
-) -> PyResult<&'py PyArray3<f32>> {
+) -> PyResult<Bound<'py, PyArray3<f32>>> {
     let new_size: Size = new_size.into();
     let filter: Filter = filter.into();
 
@@ -73,7 +73,7 @@ pub fn resize<'py>(
 
     if gamma_correction {
         let mut img: NDimImage = img.load_image()?;
-        let result: PyResult<_> = py.allow_threads(|| {
+        let result: PyResult<_> = py.detach(|| {
             // convert to linear
             image_ops::gamma::gamma_ndim(&mut img, 2.2);
 
@@ -146,7 +146,7 @@ pub fn resize<'py>(
             img: ImageView<'_, P>,
             new_size: Size,
             filter: Filter,
-        ) -> PyResult<&'py PyArray3<f32>>
+        ) -> PyResult<Bound<'py, PyArray3<f32>>>
         where
             P: Flatten + ClipFloat + Default + Copy + Sync + Send + 'static,
             FloatPixelFormat<P>: PixelFormat<InputPixel = P, OutputPixel = P>,
@@ -219,17 +219,17 @@ pub fn resize<'py>(
         _ => Err(new_error()),
     };
 
-    fn with_pixel_format<P>(
-        py: Python,
+    fn with_pixel_format<'py, P>(
+        py: Python<'py>,
         img: Image<P>,
         new_size: Size,
         filter: Filter,
-    ) -> PyResult<&PyArray3<f32>>
+    ) -> PyResult<Bound<'py, PyArray3<f32>>>
     where
         P: Flatten + ClipFloat + Default + Copy + Send + 'static,
         FloatPixelFormat<P>: PixelFormat<InputPixel = P, OutputPixel = P>,
     {
-        let result = py.allow_threads(|| {
+        let result = py.detach(|| {
             let r = image_ops::scale::scale(img.view(), new_size, filter);
             std::mem::drop(img);
             match r {

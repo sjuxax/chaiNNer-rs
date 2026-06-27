@@ -4,7 +4,7 @@ use image_core::{
 };
 use numpy::{
     ndarray::{Array3, Dimension},
-    Ix3, PyReadonlyArray, PyReadonlyArray2, PyReadonlyArray3,
+    Ix3, PyReadonlyArray, PyReadonlyArray2, PyReadonlyArray3, PyUntypedArrayMethods,
 };
 use pyo3::{exceptions::PyValueError, FromPyObject, PyResult};
 

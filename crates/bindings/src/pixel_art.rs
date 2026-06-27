@@ -14,13 +14,15 @@ pub fn pixel_art_upscale<'py>(
     img: PyImage<'py>,
     algorithm: &str,
     scale: u32,
-) -> PyResult<&'py PyArray3<f32>> {
+) -> PyResult<Bound<'py, PyArray3<f32>>> {
+    let algorithm = algorithm.to_owned();
+
     fn with_pixel_format<'py, P>(
         py: Python<'py>,
         img: PyImage<'py>,
         algorithm: &str,
         scale: u32,
-    ) -> PyResult<&'py PyArray3<f32>>
+    ) -> PyResult<Bound<'py, PyArray3<f32>>>
     where
         P: FromFlat
             + Default
@@ -33,7 +35,7 @@ pub fn pixel_art_upscale<'py>(
         Image<P>: IntoNumpy,
     {
         let img: Image<P> = img.load_image()?;
-        let result = py.allow_threads(|| {
+        let result = py.detach(|| {
             let result: Image<P> = match algorithm {
                 "adv_mame" => match scale {
                     2 => image_ops::pixel_art::adv_mame_2x(&img),
@@ -108,9 +110,9 @@ pub fn pixel_art_upscale<'py>(
 
     let c = img.channels();
     match c {
-        1 => with_pixel_format::<f32>(py, img, algorithm,scale),
-        3 => with_pixel_format::<Vec3A>(py, img, algorithm,scale),
-        4 => with_pixel_format::<Vec4>(py, img, algorithm,scale),
+        1 => with_pixel_format::<f32>(py, img, &algorithm, scale),
+        3 => with_pixel_format::<Vec3A>(py, img, &algorithm, scale),
+        4 => with_pixel_format::<Vec4>(py, img, &algorithm, scale),
         _ => Err(PyValueError::new_err(format!(
             "Argument '{}' does not have the right shape. Expected 1, 3, or 4 channels but found {}.",
             stringify!(img),

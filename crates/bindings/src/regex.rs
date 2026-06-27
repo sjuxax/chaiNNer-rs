@@ -82,7 +82,7 @@ impl From<regex_py::RegexMatch> for RegexMatch {
         Self { inner: r }
     }
 }
-#[pyclass(frozen, get_all)]
+#[pyclass(frozen, get_all, skip_from_py_object)]
 #[derive(Debug, Clone, PartialEq)]
 pub struct MatchGroup {
     pub start: usize,

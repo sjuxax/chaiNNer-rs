@@ -4,7 +4,7 @@ import sys
 
 if __name__ == "__main__":
     # Ensure maturin is installed
-    os.system("pip install --disable-pip-version-check maturin==1.1.0")
+    os.system("pip install --disable-pip-version-check maturin")
 
     # Build bindings
     os.system("maturin build --release -m crates/bindings/Cargo.toml --interpreter " + sys.executable)
